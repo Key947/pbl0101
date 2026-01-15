@@ -1,0 +1,242 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>PBL0101 - Simple Vue Frontend</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; max-width:900px; margin:20px auto; padding:10px; }
+    input, textarea { display:block; margin:6px 0 12px; padding:8px; width:100%; max-width:600px; }
+    button { padding:8px 12px; margin-right:8px; }
+    header { display:flex; justify-content:space-between; align-items:center; }
+    nav a { margin-right:8px; cursor:pointer; }
+    .card { border:1px solid #ddd; padding:10px; margin:8px 0; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div>
+        <h1>PBL0101</h1>
+        <div>Team: <strong>Laverda 007 dan Arry Wahyu 158</strong></div>
+      </div>
+      <nav>
+        <a href="#/">Home</a>
+        <a href="#/register">Register</a>
+        <a href="#/login">Sign In</a>
+        <a href="#/admin">Admin</a>
+        <span v-if="username"> | Logged as: <strong>{{username}}</strong></span>
+      </nav>
+    </header>
+
+    <main>
+      <component :is="view"></component>
+    </main>
+  </div>
+
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- axios CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+  <script>
+  const apiBase = "http://localhost:3000";
+
+  /* ---------------- COMPONENTS ---------------- */
+
+  const Home = {
+    template: `
+      <div>
+        <h2 v-if="user">Hello, {{ user }}</h2>
+        <p v-else>Please sign in to post or view your profile.</p>
+
+        <div v-if="user" class="card">
+          <h3>New Post</h3>
+          <textarea v-model="content" rows="4" placeholder="Write something..."></textarea>
+          <button @click="post">Post</button>
+          <button @click="goProfile">My Profile</button>
+        </div>
+
+        <h3>Recent posts</h3>
+        <div v-for="p in posts" :key="p.id" class="card">
+          <strong>{{ p.username }}</strong> <small> - {{ formatDate(p.datetime) }}</small>
+          <p>{{ p.content }}</p>
+        </div>
+      </div>
+    `,
+    data(){ 
+      return { 
+        user: localStorage.getItem("username") || null, 
+        content:"", 
+        posts:[] 
+      };
+    },
+    methods:{
+      async post(){
+        if(!this.content) return alert("Please write something");
+        await axios.post(apiBase + "/post", { username: this.user, content: this.content });
+        alert("Posted!");
+        this.content = "";
+        this.load();
+      },
+      goProfile(){ location.hash = "#/profile/" + this.user },
+      formatDate(dt){ return new Date(dt).toLocaleString() },
+      async load(){
+        const r = await axios.get(apiBase + "/admin");
+        this.posts = r.data.posts.slice(0,20);
+      }
+    },
+    mounted(){ this.load() }
+  };
+
+  const Register = {
+    template: `
+      <div>
+        <h2>Register</h2>
+        <input v-model="username" placeholder="username" />
+        <input v-model="email" placeholder="email" />
+        <input v-model="password" type="password" placeholder="password" />
+        <button @click="register">Register</button>
+      </div>`,
+    data(){ return { username:"", email:"", password:"" } },
+    methods:{
+      async register(){
+        if(!this.username||!this.email||!this.password) return alert("Fill all fields");
+        try{
+          await axios.post(apiBase + "/register", { username:this.username, email:this.email, password:this.password });
+          alert("Registered! Now login.");
+          location.hash = "#/login";
+        }catch(e){ 
+          alert(e.response?.data?.error || "Error"); 
+        }
+      }
+    }
+  };
+
+  const Login = {
+    template: `
+      <div>
+        <h2>Sign In</h2>
+        <input v-model="username" placeholder="username" />
+        <input v-model="password" type="password" placeholder="password" />
+        <button @click="login">Login</button>
+      </div>`,
+    data(){ return { username:"", password:"" } },
+    methods:{
+      async login(){
+        if(!this.username||!this.password) return alert("Fill fields");
+        try{
+          const r = await axios.post(apiBase + "/login", { username:this.username, password:this.password });
+          localStorage.setItem("token", r.data.token);
+          localStorage.setItem("username", r.data.username);
+          alert("Logged in!");
+          location.hash = "#/";
+          app.username = r.data.username;
+        }catch(e){
+          alert(e.response?.data?.error || "Login error");
+        }
+      }
+    }
+  };
+
+  const Profile = {
+    template: `
+      <div>
+        <h2>Profile: {{ uname }}</h2>
+        <div v-if="posts.length===0">No posts yet</div>
+        <div v-for="p in posts" :key="p.id" class="card">
+          <p>{{ p.content }}</p>
+          <small>{{ formatDate(p.datetime) }}</small>
+        </div>
+      </div>`,
+    data(){ 
+      return { 
+        posts:[], 
+        uname: decodeURIComponent(location.hash.split("/")[2] || "") 
+      }; 
+    },
+    methods:{
+      async load(){
+        const r = await axios.get(apiBase + "/profile/" + this.uname);
+        this.posts = r.data.posts;
+      },
+      formatDate(dt){ return new Date(dt).toLocaleString() }
+    },
+    mounted(){ this.load() }
+  };
+
+  const Admin = {
+    template: `
+      <div>
+        <h2>Admin Dashboard</h2>
+        <h3>Users</h3>
+        <ul>
+          <li v-for="u in users" :key="u.id">{{ u.username }} - {{ u.email }}</li>
+        </ul>
+        <h3>Posts</h3>
+        <div v-for="p in posts" :key="p.id" class="card">
+          <strong>{{ p.username }}</strong> <small>{{ formatDate(p.datetime) }}</small>
+          <p>{{ p.content }}</p>
+        </div>
+      </div>`,
+    data(){ return { users:[], posts:[] } },
+    methods:{
+      async load(){
+        const r = await axios.get(apiBase + "/admin");
+        this.users = r.data.users;
+        this.posts = r.data.posts;
+      },
+      formatDate(dt){ return new Date(dt).toLocaleString() }
+    },
+    mounted(){ this.load() }
+  };
+
+  /* ---------------- FIXED ROUTER ---------------- */
+
+  const routes = {
+    "#/": Home,
+    "#/register": Register,
+    "#/login": Login,
+    "#/admin": Admin,
+  };
+
+  function viewForHash() {
+    let h = location.hash;
+
+    if (!h || h === "") h = "#/";
+
+    // profile page
+    if (h.startsWith("#/profile/")) return Profile;
+
+    return routes[h] || Home;
+  }
+
+  /* ---------------- APP ---------------- */
+
+  const app = Vue.createApp({
+    data(){ 
+      return { 
+        view: Home, 
+        username: localStorage.getItem("username") || null 
+      }; 
+    }
+  });
+
+  app.component("Home", Home);
+  app.component("Register", Register);
+  app.component("Login", Login);
+  app.component("Profile", Profile);
+  app.component("Admin", Admin);
+
+  const vm = app.mount("#app");
+
+  function updateView(){
+    vm.view = viewForHash();
+    vm.username = localStorage.getItem("username") || null;
+  }
+
+  window.addEventListener("hashchange", updateView);
+  updateView();
+  </script>
+</body>
+</html>
